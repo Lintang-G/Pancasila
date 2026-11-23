@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Bank Sampah Kampus - Simulasi IoT & EcoCampus Wallet</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & JetBrains Mono (untuk layar timbangan digital) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@600;700;800&display=swap" rel="stylesheet">
+    <!-- Tone.js untuk efek suara bip scanner & transaksi tanpa file audio eksternal -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        eco: {
+                            50: '#ecfdf5',
+                            100: '#d1fae5',
+                            200: '#a7f3d0',
+                            500: '#10b981',
+                            600: '#059669',
+                            700: '#047857',
+                            800: '#065f46',
+                            900: '#064e3b',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Animasi garis laser scanner */
+        @keyframes scanLine {
+            0% { top: 0%; opacity: 0.2; }
+            50% { top: 95%; opacity: 1; }
+            100% { top: 0%; opacity: 0.2; }
+        }
+        .scanner-laser {
+            position: absolute;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, transparent, #10b981, #34d399, #10b981, transparent);
+            box-shadow: 0 0 12px #10b981;
+            animation: scanLine 1.2s ease-in-out infinite;
+        }
+        /* Custom Range Slider */
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 24px;
+            width: 24px;
+            border-radius: 50%;
+            background: #059669;
+            cursor: pointer;
+            border: 3px solid #ffffff;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            transition: transform 0.15s ease;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+        /* Custom Scrollbar untuk Riwayat */
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 8px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 8px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- NAVBAR / HEADER -->
+    <header class="bg-gradient-to-r from-eco-900 via-eco-800 to-teal-900 text-white shadow-lg sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-eco-500/20 border border-eco-400/40 p-2.5 rounded-xl backdrop-blur-sm">
+                    <svg class="w-7 h-7 text-eco-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">Smart Bank Sampah Kampus</h1>
+                        <span class="hidden sm:inline-block text-xs font-semibold bg-eco-500/30 text-eco-200 border border-eco-400/30 px-2.5 py-0.5 rounded-full">Prototype v1.0</span>
+                    </div>
+                    <p class="text-xs sm:text-sm text-eco-200">Sistem Pengelolaan Limbah Anorganik Terintegrasi IoT & Insentif Mahasiswa</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <!-- Toggle Suara Simulasi -->
+                <button id="soundToggleBtn" onclick="toggleSound()" class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 text-white text-xs sm:text-sm font-medium px-3 py-2 rounded-xl border border-white/15 transition">
+                    <span id="soundIcon">🔊</span>
+                    <span class="hidden md:inline" id="soundText">Suara Aktif</span>
+                </button>
+                <!-- Tombol Reset Simulasi -->
+                <button onclick="openResetModal()" class="flex items-center gap-1.5 bg-rose-500/90 hover:bg-rose-600 text-white text-xs sm:text-sm font-semibold px-3.5 py-2 rounded-xl shadow transition">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span>Reset Simulasi</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- NOTIFIKASI TOAST MELAYANG -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none px-4 sm:px-0"></div>
+
+    <!-- MAIN CONTENT: GRID 2 KOLOM BESAR -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+            <!-- ========================================== -->
+            <!-- PANEL KIRI: SIMULASI MESIN PINTAR & IOT    -->
+            <!-- ========================================== -->
+            <section class="lg:col-span-6 bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
+                <!-- Header Mesin -->
+                <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between border-b border-slate-800">
+                    <div class="flex items-center gap-2.5">
+                        <span class="text-xl">🤖</span>
+                        <div>
+                            <h2 class="font-bold text-base sm:text-lg leading-tight">Simulasi Mesin Pintar & IoT</h2>
+                            <p class="text-xs text-slate-400">Unit Terminal Drop-Box Gedung Rektorat</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 bg-emerald-950/80 border border-emerald-500/40 px-3 py-1 rounded-full">
+                        <span class="relative flex h-2.5 w-2.5">
+                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                        </span>
+                        <span class="text-xs font-semibold text-emerald-300">Mesin Online - Siap Memindai</span>
+                    </div>
+                </div>
+
+                <div class="p-6 space-y-6">
+                    <!-- STEP 1: SCAN KTM MAHASISWA -->
+                    <div>
+                        <div class="flex items-center justify-between mb-2.5">
+                            <label class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                <span class="bg-eco-100 text-eco-700 w-5 h-5 rounded-full inline-flex items-center justify-center font-extrabold">1</span>
+                                Identitas Mahasiswa (Scan RFID / QR KTM)
+                            </label>
+                            <span class="text-xs text-eco-600 font-medium">Klik untuk simulasi tap KTM</span>
+                        </div>
+
+                        <!-- Tombol Cepat Pilih Mahasiswa -->
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3" id="studentButtons">
+                            <!-- Diisi otomatis via JS -->
+                        </div>
+
+                        <!-- Kartu Preview KTM Aktif dengan Efek Scan -->
+                        <div id="ktmCardContainer" class="relative overflow-hidden rounded-xl bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-800 text-white p-4 shadow-inner transition-all duration-300">
+                            <!-- Overlay Animasi Scanning -->
+                            <div id="scanOverlay" class="hidden absolute inset-0 bg-slate-900/85 backdrop-blur-xs z-20 flex flex-col items-center justify-center">
+                                <div class="scanner-laser"></div>
+                                <svg class="w-8 h-8 text-eco-400 animate-pulse mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                                </svg>
+                                <span class="text-sm font-bold text-eco-300 tracking-wide">Memindai KTM Mahasiswa...</span>
+                            </div>
+
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3.5">
+                                    <div id="activeStudentAvatar" class="w-12 h-12 rounded-xl bg-white/20 border border-white/30 flex items-center justify-center text-xl font-extrabold shadow">
+                                        BS
+                                    </div>
+                                    <div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="text-[10px] uppercase tracking-widest bg-white/20 px-2 py-0.5 rounded font-semibold">KTM Terverifikasi ✓</span>
+                                        </div>
+                                        <h3 id="activeStudentName" class="font-bold text-lg leading-snug mt-0.5">Budi Santoso</h3>
+                                        <p id="activeStudentMeta" class="text-xs text-emerald-100">NIM: 2023101 • Teknik Informatika</p>
+                                    </div>
+                                </div>
+                                <div class="hidden sm:block text-right">
+                                    <div class="bg-white p-1.5 rounded-lg inline-block shadow">
+                                        <!-- Mini QR SVG dekoratif -->
+                                        <svg class="w-9 h-9 text-slate-900" viewBox="0 0 24 24" fill="currentColor">
+                                            <path d="M3 3h6v6H3V3zm2 2v2h2V5H5zm8-2h6v6h-6V3zm2 2v2h2V5h-2zM3 13h6v6H3v-6zm2 2v2h2v-2H5zm13-2h3v2h-3v-2zm-5 0h2v4h-2v-4zm3 4h2v4h-2v-4zm3-2h2v6h-2v-6zm-6 4h2v2h-2v-2z"/>
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- STEP 2: PILIH JENIS SAMPAH ANORGANIK -->
+                    <div>
+                        <label class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5 mb-2.5">
+                            <span class="bg-eco-100 text-eco-700 w-5 h-5 rounded-full inline-flex items-center justify-center font-extrabold">2</span>
+                            Deteksi Jenis Sampah Anorganik
+                        </label>
+                        <div class="grid grid-cols-3 gap-3" id="wasteTypeGrid">
+                            <!-- Diisi otomatis via JS -->
+                        </div>
+                    </div>
+
+                    <!-- STEP 3: TIMBANGAN DIGITAL OTOMATIS (LOAD CELL SENSOR) -->
+                    <div>
+                        <div class="flex items-center justify-between mb-2.5">
+                            <label class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                <span class="bg-eco-100 text-eco-700 w-5 h-5 rounded-full inline-flex items-center justify-center font-extrabold">3</span>
+                                Sensor Timbangan Digital (Load Cell)
+                            </label>
+                            <span class="text-xs text-slate-400">Geser atau pilih berat preset</span>
+                        </div>
+
+                        <!-- Layar Digital Timbangan -->
+                        <div class="bg-slate-950 rounded-2xl p-4 border-4 border-slate-800 shadow-inner mb-3">
+                            <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 mb-1">
+                                <span>SENSOR: STABIL [OK]</span>
+                                <span id="rateIndicator">RATE: 10 POIN / 100g</span>
+                            </div>
+                            <div class="flex items-baseline justify-between gap-2 my-1">
+                                <div class="font-mono text-4xl sm:text-5xl font-extrabold text-emerald-400 tracking-tight" id="weightDisplay">
+                                    500<span class="text-xl sm:text-2xl text-emerald-600 ml-1">gram</span>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-xs text-slate-400">Estimasi Perolehan</div>
+                                    <div class="font-mono text-lg sm:text-xl font-bold text-amber-400" id="estimatedPointsDisplay">+50 Poin</div>
+                                    <div class="text-xs font-semibold text-emerald-300" id="estimatedRupiahDisplay">(Setara Rp 5.000)</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Slider Interaktif -->
+                        <div class="px-1 mb-3">
+                            <input type="range" id="weightSlider" min="50" max="5000" step="50" value="500"
+                                class="w-full h-2.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-eco-600"
+                                oninput="updateWeight(this.value)">
+                            <div class="flex justify-between text-[11px] font-medium text-slate-400 mt-1">
+                                <span>50g</span>
+                                <span>1.000g (1kg)</span>
+                                <span>2.500g</span>
+                                <span>5.000g (5kg)</span>
+                            </div>
+                        </div>
+
+                        <!-- Tombol Preset Cepat -->
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" onclick="setPresetWeight(250)" class="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-eco-50 hover:text-eco-700 hover:border-eco-300 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 transition">250g (~8 Botol)</button>
+                            <button type="button" onclick="setPresetWeight(500)" class="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-eco-50 hover:text-eco-700 hover:border-eco-300 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 transition">500g (0.5 kg)</button>
+                            <button type="button" onclick="setPresetWeight(1000)" class="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-eco-50 hover:text-eco-700 hover:border-eco-300 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 transition">1.000g (1 kg)</button>
+                            <button type="button" onclick="setPresetWeight(2500)" class="flex-1 py-1.5 px-2 bg-slate-100 hover:bg-eco-50 hover:text-eco-700 hover:border-eco-300 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 transition">2.500g (2.5 kg)</button>
+                        </div>
+                    </div>
+
+                    <!-- TOMBOL AKSI UTAMA: SETOR & KONVERSI -->
+                    <button id="depositBtn" onclick="processDeposit()"
+                        class="w-full py-4 px-6 bg-gradient-to-r from-eco-600 to-emerald-500 hover:from-eco-700 hover:to-emerald-600 active:scale-[0.99] text-white font-extrabold text-base sm:text-lg rounded-2xl shadow-lg shadow-eco-600/30 flex items-center justify-center gap-3 transition-all cursor-pointer">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>Setor & Konversi Poin Sekarang</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- ========================================== -->
+            <!-- PANEL KANAN: APLIKASI MAHASISWA (WALLET)   -->
+            <!-- ========================================== -->
+            <section class="lg:col-span-6 space-y-6">
+                
+                <!-- KARTU SALDO & POIN MAHASISWA -->
+                <div class="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
+                    <div class="bg-eco-50 border-b border-eco-100 px-6 py-4 flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <span class="text-xl">📱</span>
+                            <div>
+                                <h2 class="font-bold text-base sm:text-lg text-slate-800 leading-tight">Aplikasi Mahasiswa (EcoCampus Wallet)</h2>
+                                <p class="text-xs text-slate-500">Sinkronisasi Cloud Real-Time</p>
+                            </div>
+                        </div>
+                        <span class="text-xs font-bold bg-eco-600 text-white px-2.5 py-1 rounded-lg">1 Poin = Rp 100</span>
+                    </div>
+
+                    <div class="p-6">
+                        <!-- Info Pemilik Akun & Statistik Saldo -->
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+                            <div>
+                                <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Akun Mahasiswa Aktif</p>
+                                <h3 id="walletStudentName" class="text-xl font-extrabold text-slate-800">Budi Santoso</h3>
+                                <p id="walletStudentNim" class="text-xs text-slate-500 font-medium">NIM: 2023101 • Total Sampah Disetor: <span id="walletTotalWeight" class="text-eco-700 font-bold">0 gram</span></p>
+                            </div>
+
+                            <div class="flex items-center gap-3 bg-gradient-to-r from-eco-50 to-teal-50 border border-eco-200 px-4 py-3 rounded-2xl">
+                                <div>
+                                    <span class="text-[11px] font-bold uppercase text-eco-700 block">Total Poin Terkumpul</span>
+                                    <div class="flex items-baseline gap-1.5">
+                                        <span id="walletPoints" class="text-3xl sm:text-4xl font-extrabold text-eco-700 transition-transform duration-300">0</span>
+                                        <span class="text-sm font-bold text-eco-600">Poin</span>
+                                    </div>
+                                    <span id="walletRupiah" class="text-xs font-semibold text-slate-600">Estimasi Saldo: Rp 0</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- KATALOG PENUKARAN POIN (REDEEM REWARD) -->
+                        <div class="mt-5">
+                            <div class="flex items-center justify-between mb-3">
+                                <h4 class="text-sm font-bold text-slate-700 flex items-center gap-1.5">
+                                    <span>🎁</span> Katalog Penukaran Insentif Kampus
+                                </h4>
+                                <span class="text-xs text-slate-400">Klik "Tukar" untuk klaim voucher</span>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="rewardCatalogGrid">
+                                <!-- Diisi otomatis via JS -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- RIWAYAT TRANSAKSI REAL-TIME -->
+                <div class="bg-white rounded-2xl shadow-md border border-slate-200 overflow-hidden">
+                    <div class="px-6 py-3.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                        <h3 class="text-sm font-bold text-slate-700 flex items-center gap-2">
+                            <span>🧾</span> Riwayat Transaksi Real-Time
+                        </h3>
+                        <span id="txCountBadge" class="text-xs font-semibold bg-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full">0 Transaksi</span>
+                    </div>
+
+                    <div class="p-4 max-h-[260px] overflow-y-auto custom-scroll" id="transactionList">
+                        <!-- Diisi otomatis via JS -->
+                    </div>
+                </div>
+
+            </section>
+        </div>
+    </main>
+
+    <!-- ========================================== -->
+    <!-- MODAL POP-UP: VOUCHER DIGITAL & QR CODE    -->
+    <!-- ========================================== -->
+    <div id="voucherModal" class="hidden fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full overflow-hidden shadow-2xl border border-slate-200 transform transition-all scale-100">
+            <!-- Header Voucher -->
+            <div class="bg-gradient-to-r from-eco-600 to-teal-600 p-5 text-white text-center relative">
+                <div class="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center text-2xl mx-auto mb-2 backdrop-blur-xs">
+                    🎟️
+                </div>
+                <h3 class="text-lg font-extrabold">Penukaran Poin Berhasil!</h3>
+                <p class="text-xs text-eco-100">Tunjukkan QR Code ini ke kasir kantin / petugas print</p>
+            </div>
+
+            <!-- Isi Tiket Voucher -->
+            <div class="p-6 text-center space-y-4">
+                <div class="bg-slate-50 border-2 border-dashed border-slate-300 rounded-2xl p-4">
+                    <span id="modalRewardBadge" class="inline-block text-[11px] font-bold uppercase tracking-wider bg-eco-100 text-eco-800 px-2.5 py-0.5 rounded-full mb-1">VOUCHER DIGITAL</span>
+                    <h4 id="modalRewardTitle" class="text-lg font-extrabold text-slate-800">Voucher Makan Kantin Rp 5.000</h4>
+                    <p id="modalStudentInfo" class="text-xs text-slate-500 mt-0.5">Pemilik: Budi Santoso (2023101)</p>
+
+                    <!-- Simulasi QR Code SVG -->
+                    <div class="my-4 flex justify-center">
+                        <div class="p-3 bg-white border border-slate-200 rounded-2xl shadow-sm inline-block">
+                            <svg id="modalQrSvg" class="w-36 h-36 text-slate-900" viewBox="0 0 100 100" fill="currentColor">
+                                <!-- Pola QR Code akan digenerate dinamis -->
+                            </svg>
+                        </div>
+                    </div>
+
+                    <div class="bg-slate-900 text-amber-400 font-mono text-sm font-bold py-2 px-4 rounded-xl tracking-widest" id="modalVoucherCode">
+                        ECO-2026-8849
+                    </div>
+                    <p class="text-[11px] text-slate-400 mt-2" id="modalTimestamp">Berlaku hingga hari ini • 1x Pemakaian</p>
+                </div>
+
+                <button onclick="closeVoucherModal()" class="w-full py-3 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl transition cursor-pointer">
+                    Selesai & Tutup
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- MODAL KONFIRMASI RESET SIMULASI            -->
+    <!-- ========================================== -->
+    <div id="resetModal" class="hidden fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 text-center">
+            <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center text-2xl mx-auto mb-3">
+                ⚠️
+            </div>
+            <h3 class="text-lg font-extrabold text-slate-800">Reset Data Simulasi?</h3>
+            <p class="text-sm text-slate-500 mt-1 mb-5">Semua poin mahasiswa dan riwayat transaksi akan dikembalikan ke kondisi awal untuk memulai demo presentasi baru.</p>
+            <div class="flex gap-3">
+                <button onclick="closeResetModal()" class="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl transition cursor-pointer">
+                    Batal
+                </button>
+                <button onclick="confirmResetData()" class="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold rounded-xl transition cursor-pointer">
+                    Ya, Reset Sekarang
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- JAVASCRIPT LOGIC & STATE MANAGEMENT        -->
+    <!-- ========================================== -->
+    <script>
+        // --- 1. KONFIGURASI DATA AWAL ---
+        const STORAGE_KEY = 'smart_bank_sampah_uas_v1';
+        const RUPIAH_PER_POINT = 100;
+
+        const INITIAL_STUDENTS = [
+            { id: '2023101', name: 'Budi Santoso', major: 'Teknik Informatika', initials: 'BS', points: 40, totalWeight: 400 },
+            { id: '2023102', name: 'Siti Aminah', major: 'Sistem Informasi', initials: 'SA', points: 85, totalWeight: 700 },
+            { id: '2023103', name: 'Andi Pratama', major: 'Teknik Lingkungan', initials: 'AP', points: 20, totalWeight: 200 }
+        ];
+
+        const WASTE_TYPES = [
+            { id: 'plastic', name: 'Botol Plastik PET', icon: '🧴', ratePer100g: 10, desc: '10 Poin / 100g' },
+            { id: 'can', name: 'Kaleng Aluminium', icon: '🥫', ratePer100g: 15, desc: '15 Poin / 100g' },
+            { id: 'paper', name: 'Kertas / Kardus', icon: '📦', ratePer100g: 5, desc: '5 Poin / 100g' }
+        ];
+
+        const REWARD_CATALOG = [
+            { id: 'r1', title: 'Voucher Makan Kantin Rp 5.000', cost: 50, icon: '🍱', category: 'Kantin Kampus' },
+            { id: 'r2', title: 'Kuota Print Kampus 15 Lembar', cost: 30, icon: '🖨️', category: 'Print Center' },
+            { id: 'r3', title: 'Voucher Kopi Perpustakaan Rp 8.000', cost: 80, icon: '☕', category: 'Library Cafe' },
+            { id: 'r4', title: 'Saldo E-Wallet Rp 10.000', cost: 100, icon: '💳', category: 'Transfer Instan' }
+        ];
+
+        // --- 2. STATE APLIKASI ---
+        let appState = {
+            students: [],
+            activeStudentId: '2023101',
+            selectedWasteId: 'plastic',
+            currentWeight: 500,
+            transactions: [],
+            soundEnabled: true
+        };
+
+        // --- 3. INISIALISASI & LOCALSTORAGE ---
+        function initApp() {
+            const savedData = localStorage.getItem(STORAGE_KEY);
+            if (savedData) {
+                try {
+                    const parsed = JSON.parse(savedData);
+                    appState = { ...appState, ...parsed };
+                } catch (e) {
+                    resetToDefaultState();
+                }
+            } else {
+                resetToDefaultState();
+            }
+            renderAll();
+        }
+
+        function resetToDefaultState() {
+            appState.students = JSON.parse(JSON.stringify(INITIAL_STUDENTS));
+            appState.activeStudentId = '2023101';
+            appState.selectedWasteId = 'plastic';
+            appState.currentWeight = 500;
+            appState.transactions = [
+                {
+                    id: 'TX-INIT-1',
+                    type: 'deposit',
+                    studentId: '2023102',
+                    studentName: 'Siti Aminah',
+                    detail: 'Setor 500g Kaleng Aluminium',
+                    pointsDelta: +75,
+                    timestamp: 'Hari ini, 09:15'
+                },
+                {
+                    id: 'TX-INIT-2',
+                    type: 'deposit',
+                    studentId: '2023101',
+                    studentName: 'Budi Santoso',
+                    detail: 'Setor 400g Botol Plastik PET',
+                    pointsDelta: +40,
+                    timestamp: 'Hari ini, 08:40'
+                }
+            ];
+            saveState();
+        }
+
+        function saveState() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+        }
+
+        // --- 4. EFEK SUARA SINTETIS (TONE.JS) ---
+        function playBeep(type = 'scan') {
+            if (!appState.soundEnabled || typeof Tone === 'undefined') return;
+            try {
+                if (Tone.context.state !== 'running') {
+                    Tone.start();
+                }
+                const synth = new Tone.Synth().toDestination();
+                if (type === 'scan') {
+                    synth.triggerAttackRelease("C6", "16n");
+                } else if (type === 'success') {
+                    const now = Tone.now();
+                    synth.triggerAttackRelease("E5", "16n", now);
+                    synth.triggerAttackRelease("G5", "16n", now + 0.1);
+                    synth.triggerAttackRelease("C6", "8n", now + 0.2);
+                } else if (type === 'redeem') {
+                    const now = Tone.now();
+                    synth.triggerAttackRelease("A5", "16n", now);
+                    synth.triggerAttackRelease("E6", "8n", now + 0.12);
+                } else if (type === 'error') {
+                    synth.triggerAttackRelease("G3", "8n");
+                }
+            } catch (err) {
+                // Abaikan jika browser memblokir autoplay audio sebelum interaksi
+            }
+        }
+
+        function toggleSound() {
+            appState.soundEnabled = !appState.soundEnabled;
+            saveState();
+            updateSoundUI();
+            if (appState.soundEnabled) playBeep('scan');
+        }
+
+        function updateSoundUI() {
+            const icon = document.getElementById('soundIcon');
+            const text = document.getElementById('soundText');
+            icon.textContent = appState.soundEnabled ? '🔊' : '🔇';
+            text.textContent = appState.soundEnabled ? 'Suara Aktif' : 'Suara Mati';
+        }
+
+        // --- 5. FUNGSI INTERAKSI PANEL KIRI (MESIN IOT) ---
+        function selectStudent(studentId) {
+            playBeep('scan');
+            appState.activeStudentId = studentId;
+            saveState();
+
+            // Tampilkan animasi laser "Memindai KTM..."
+            const scanOverlay = document.getElementById('scanOverlay');
+            scanOverlay.classList.remove('hidden');
+
+            renderStudentButtons();
+
+            setTimeout(() => {
+                scanOverlay.classList.add('hidden');
+                renderActiveStudentCard();
+                renderWalletPanel();
+                renderTransactions();
+                showToast(`KTM Terdeteksi: ${getActiveStudent().name}`, 'info');
+            }, 550);
+        }
+
+        function selectWasteType(wasteId) {
+            playBeep('scan');
+            appState.selectedWasteId = wasteId;
+            saveState();
+            renderWasteTypes();
+            updateScaleCalculation();
+        }
+
+        function updateWeight(val) {
+            appState.currentWeight = parseInt(val, 10);
+            document.getElementById('weightSlider').value = appState.currentWeight;
+            updateScaleCalculation();
+        }
+
+        function setPresetWeight(val) {
+            playBeep('scan');
+            updateWeight(val);
+        }
+
+        function calculatePoints(weightGram, wasteObj) {
+            // Rumus: (berat / 100) * ratePer100g, dibulatkan ke integer terdekat
+            return Math.round((weightGram / 100) * wasteObj.ratePer100g);
+        }
+
+        function updateScaleCalculation() {
+            const waste = WASTE_TYPES.find(w => w.id === appState.selectedWasteId);
+            const points = calculatePoints(appState.currentWeight, waste);
+            const rupiah = points * RUPIAH_PER_POINT;
+
+            document.getElementById('weightDisplay').innerHTML = `${appState.currentWeight.toLocaleString('id-ID')}<span class="text-xl sm:text-2xl text-emerald-600 ml-1">gram</span>`;
+            document.getElementById('rateIndicator').textContent = `RATE: ${waste.ratePer100g} POIN / 100g`;
+            document.getElementById('estimatedPointsDisplay').textContent = `+${points} Poin`;
+            document.getElementById('estimatedRupiahDisplay').textContent = `(Setara Rp ${rupiah.toLocaleString('id-ID')})`;
+        }
+
+        function processDeposit() {
+            const student = getActiveStudent();
+            const waste = WASTE_TYPES.find(w => w.id === appState.selectedWasteId);
+            const earnedPoints = calculatePoints(appState.currentWeight, waste);
+
+            if (earnedPoints <= 0) {
+                showToast('Berat sampah terlalu kecil untuk dikonversi.', 'error');
+                return;
+            }
+
+            // Update data mahasiswa
+            student.points += earnedPoints;
+            student.totalWeight += appState.currentWeight;
+
+            // Catat riwayat transaksi
+            const newTx = {
+                id: 'TX-' + Date.now(),
+                type: 'deposit',
+                studentId: student.id,
+                studentName: student.name,
+                detail: `Setor ${appState.currentWeight.toLocaleString('id-ID')}g ${waste.name}`,
+                pointsDelta: +earnedPoints,
+                timestamp: getCurrentTimeFormatted()
+            };
+            appState.transactions.unshift(newTx);
+
+            saveState();
+            playBeep('success');
+
+            // Animasi pop angka poin di panel kanan
+            const pointsEl = document.getElementById('walletPoints');
+            pointsEl.classList.add('scale-125', 'text-amber-500');
+            setTimeout(() => {
+                pointsEl.classList.remove('scale-125', 'text-amber-500');
+            }, 400);
+
+            renderWalletPanel();
+            renderTransactions();
+            showToast(`Berhasil! +${earnedPoints} Poin masuk ke akun ${student.name}.`, 'success');
+        }
+
+        // --- 6. FUNGSI INTERAKSI PANEL KANAN (REDEEM VOUCHER) ---
+        function redeemReward(rewardId) {
+            const student = getActiveStudent();
+            const reward = REWARD_CATALOG.find(r => r.id === rewardId);
+
+            if (!reward) return;
+
+            // Cek kecukupan poin
+            if (student.points < reward.cost) {
+                playBeep('error');
+                const kurang = reward.cost - student.points;
+                showToast(`Poin tidak cukup! ${student.name} butuh ${kurang} poin lagi untuk menukar ${reward.title}.`, 'error');
+                return;
+            }
+
+            // Potong poin mahasiswa
+            student.points -= reward.cost;
+
+            // Buat kode voucher unik
+            const randomCode = 'ECO-' + Math.floor(1000 + Math.random() * 9000) + '-' + student.id.slice(-3);
+            const timeNow = getCurrentTimeFormatted();
+
+            // Simpan ke riwayat transaksi
+            const newTx = {
+                id: 'TX-' + Date.now(),
+                type: 'redeem',
+                studentId: student.id,
+                studentName: student.name,
+                detail: `Tukar: ${reward.title} (${randomCode})`,
+                pointsDelta: -reward.cost,
+                timestamp: timeNow
+            };
+            appState.transactions.unshift(newTx);
+
+            saveState();
+            playBeep('redeem');
+
+            renderWalletPanel();
+            renderTransactions();
+            openVoucherModal(reward, student, randomCode, timeNow);
+        }
+
+        // --- 7. RENDERING UI ---
+        function getActiveStudent() {
+            return appState.students.find(s => s.id === appState.activeStudentId) || appState.students[0];
+        }
+
+        function renderAll() {
+            updateSoundUI();
+            renderStudentButtons();
+            renderActiveStudentCard();
+            renderWasteTypes();
+            updateWeight(appState.currentWeight);
+            renderWalletPanel();
+            renderTransactions();
+        }
+
+        function renderStudentButtons() {
+            const container = document.getElementById('studentButtons');
+            container.innerHTML = appState.students.map(s => {
+                const isActive = s.id === appState.activeStudentId;
+                return `
+                    <button type="button" onclick="selectStudent('${s.id}')"
+                        class="text-left p-2.5 rounded-xl border transition-all flex items-center gap-2.5 cursor-pointer ${
+                            isActive
+                            ? 'bg-eco-50 border-eco-500 ring-2 ring-eco-500/20 shadow-xs'
+                            : 'bg-white border-slate-200 hover:border-eco-300 hover:bg-slate-50'
+                        }">
+                        <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-extrabold shrink-0 ${
+                            isActive ? 'bg-eco-600 text-white' : 'bg-slate-200 text-slate-600'
+                        }">
+                            ${s.initials}
+                        </div>
+                        <div class="overflow-hidden">
+                            <div class="text-xs font-bold text-slate-800 truncate">${s.name}</div>
+                            <div class="text-[11px] text-slate-500 font-mono">${s.id}</div>
+                        </div>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function renderActiveStudentCard() {
+            const s = getActiveStudent();
+            document.getElementById('activeStudentAvatar').textContent = s.initials;
+            document.getElementById('activeStudentName').textContent = s.name;
+            document.getElementById('activeStudentMeta').textContent = `NIM: ${s.id} • ${s.major}`;
+        }
+
+        function renderWasteTypes() {
+            const container = document.getElementById('wasteTypeGrid');
+            container.innerHTML = WASTE_TYPES.map(w => {
+                const isSelected = w.id === appState.selectedWasteId;
+                return `
+                    <button type="button" onclick="selectWasteType('${w.id}')"
+                        class="p-3 rounded-2xl border-2 text-center transition-all flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                            isSelected
+                            ? 'border-eco-600 bg-eco-50/80 shadow-sm scale-[1.02]'
+                            : 'border-slate-200 bg-white hover:border-eco-300 hover:bg-slate-50'
+                        }">
+                        <span class="text-2xl sm:text-3xl mb-0.5">${w.icon}</span>
+                        <span class="text-xs font-bold text-slate-800 leading-tight">${w.name}</span>
+                        <span class="text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                            isSelected ? 'bg-eco-600 text-white' : 'bg-slate-100 text-slate-600'
+                        }">${w.desc}</span>
+                    </button>
+                `;
+            }).join('');
+        }
+
+        function renderWalletPanel() {
+            const s = getActiveStudent();
+            const rupiah = s.points * RUPIAH_PER_POINT;
+
+            document.getElementById('walletStudentName').textContent = s.name;
+            document.getElementById('walletStudentNim').innerHTML = `NIM: ${s.id} • Total Sampah Disetor: <span class="text-eco-700 font-bold">${s.totalWeight.toLocaleString('id-ID')} gram</span>`;
+            document.getElementById('walletPoints').textContent = s.points.toLocaleString('id-ID');
+            document.getElementById('walletRupiah').textContent = `Estimasi Saldo: Rp ${rupiah.toLocaleString('id-ID')}`;
+
+            // Render Katalog Penukaran
+            const catalogGrid = document.getElementById('rewardCatalogGrid');
+            catalogGrid.innerHTML = REWARD_CATALOG.map(r => {
+                const canAfford = s.points >= r.cost;
+                return `
+                    <div class="p-3.5 rounded-2xl border transition-all flex flex-col justify-between gap-3 ${
+                        canAfford ? 'bg-white border-slate-200 hover:border-eco-400 shadow-xs' : 'bg-slate-50/70 border-slate-200/80 opacity-85'
+                    }">
+                        <div class="flex items-start gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-eco-50 border border-eco-100 flex items-center justify-center text-xl shrink-0">
+                                ${r.icon}
+                            </div>
+                            <div>
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">${r.category}</span>
+                                <h5 class="text-xs sm:text-sm font-bold text-slate-800 leading-snug">${r.title}</h5>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+                            <span class="text-xs font-extrabold ${canAfford ? 'text-eco-700' : 'text-slate-500'}">
+                                🪙 ${r.cost} Poin
+                            </span>
+                            <button type="button" onclick="redeemReward('${r.id}')"
+                                class="px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                                    canAfford
+                                    ? 'bg-eco-600 hover:bg-eco-700 text-white shadow-xs'
+                                    : 'bg-slate-200 hover:bg-slate-300 text-slate-600'
+                                }">
+                                ${canAfford ? 'Tukar Poin' : 'Poin Kurang'}
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderTransactions() {
+            const listContainer = document.getElementById('transactionList');
+            const badge = document.getElementById('txCountBadge');
+            badge.textContent = `${appState.transactions.length} Transaksi`;
+
+            if (appState.transactions.length === 0) {
+                listContainer.innerHTML = `<div class="text-center py-8 text-sm text-slate-400">Belum ada transaksi tercatat.</div>`;
+                return;
+            }
+
+            listContainer.innerHTML = `<div class="space-y-2.5">` + appState.transactions.map(tx => {
+                const isDeposit = tx.type === 'deposit';
+                const isCurrentUser = tx.studentId === appState.activeStudentId;
+                return `
+                    <div class="flex items-center justify-between p-3 rounded-xl border ${
+                        isCurrentUser ? 'bg-eco-50/40 border-eco-200/80' : 'bg-white border-slate-100'
+                    }">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div class="w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0 ${
+                                isDeposit ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                            }">
+                                ${isDeposit ? '♻️' : '🎁'}
+                            </div>
+                            <div class="truncate">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="text-xs font-bold text-slate-800">${tx.studentName}</span>
+                                    <span class="text-[10px] font-mono text-slate-400">(${tx.studentId})</span>
+                                </div>
+                                <p class="text-xs text-slate-600 truncate">${tx.detail}</p>
+                                <span class="text-[10px] text-slate-400">${tx.timestamp}</span>
+                            </div>
+                        </div>
+
+                        <div class="text-right shrink-0 ml-2">
+                            <span class="inline-block font-mono text-xs sm:text-sm font-extrabold px-2.5 py-1 rounded-lg ${
+                                isDeposit ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'
+                            }">
+                                ${isDeposit ? '+' + tx.pointsDelta : tx.pointsDelta} Poin
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }).join('') + `</div>`;
+        }
+
+        // --- 8. MODAL & NOTIFIKASI HELPER ---
+        function openVoucherModal(reward, student, code, timeNow) {
+            document.getElementById('modalRewardBadge').textContent = reward.category.toUpperCase();
+            document.getElementById('modalRewardTitle').textContent = reward.title;
+            document.getElementById('modalStudentInfo').textContent = `Pemilik: ${student.name} (NIM: ${student.id})`;
+            document.getElementById('modalVoucherCode').textContent = code;
+            document.getElementById('modalTimestamp').textContent = `Diterbitkan: ${timeNow} • Berlaku 1x Pakai`;
+
+            // Generate pola QR Code visual unik berdasarkan kode voucher
+            generatePseudoQR(code);
+
+            document.getElementById('voucherModal').classList.remove('hidden');
+        }
+
+        function closeVoucherModal() {
+            document.getElementById('voucherModal').classList.add('hidden');
+        }
+
+        function generatePseudoQR(seedStr) {
+            const svg = document.getElementById('modalQrSvg');
+            let rects = `
+                <!-- 3 Kotak Sudut Standar QR Code -->
+                <path d="M5,5 h25 v25 h-25 z M10,10 v15 h15 v-15 z M14,14 h7 v7 h-7 z"/>
+                <path d="M70,5 h25 v25 h-25 z M75,10 v15 h15 v-15 z M79,14 h7 v7 h-7 z"/>
+                <path d="M5,70 h25 v25 h-25 z M10,75 v15 h15 v-15 z M14,79 h7 v7 h-7 z"/>
+            `;
+            let hash = 0;
+            for (let i = 0; i < seedStr.length; i++) {
+                hash = seedStr.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            // Isi matriks tengah secara deterministik
+            for (let row = 0; row < 14; row++) {
+                for (let col = 0; col < 14; col++) {
+                    const x = 10 + col * 6;
+                    const y = 10 + row * 6;
+                    // Hindari area 3 kotak sudut
+                    if ((x < 34 && y < 34) || (x > 64 && y < 34) || (x < 34 && y > 64)) continue;
+                    const bit = Math.abs(Math.sin(hash + row * 17 + col * 31));
+                    if (bit > 0.48) {
+                        rects += `<rect x="${x}" y="${y}" width="4.5" height="4.5" rx="0.8"/>`;
+                    }
+                }
+            }
+            svg.innerHTML = rects;
+        }
+
+        function openResetModal() {
+            document.getElementById('resetModal').classList.remove('hidden');
+        }
+
+        function closeResetModal() {
+            document.getElementById('resetModal').classList.add('hidden');
+        }
+
+        function confirmResetData() {
+            resetToDefaultState();
+            renderAll();
+            closeResetModal();
+            playBeep('scan');
+            showToast('Data simulasi berhasil di-reset ke kondisi awal.', 'info');
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            const styles = {
+                success: 'bg-emerald-900 text-white border-emerald-500',
+                error: 'bg-rose-900 text-white border-rose-500',
+                info: 'bg-slate-900 text-white border-teal-400'
+            };
+            const icons = { success: '✅', error: '⚠️', info: 'ℹ️' };
+
+            toast.className = `${styles[type]} border-l-4 px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 text-xs sm:text-sm font-medium pointer-events-auto transform transition-all duration-300 translate-y-2 opacity-0`;
+            toast.innerHTML = `<span class="text-base">${icons[type]}</span><span>${message}</span>`;
+
+            container.appendChild(toast);
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3200);
+        }
+
+        function getCurrentTimeFormatted() {
+            const now = new Date();
+            const hh = String(now.getHours()).padStart(2, '0');
+            const mm = String(now.getMinutes()).padStart(2, '0');
+            const ss = String(now.getSeconds()).padStart(2, '0');
+            return `Hari ini, ${hh}:${mm}:${ss}`;
+        }
+
+        // Jalankan aplikasi saat halaman dimuat
+        window.onload = initApp;
+    </script>
+</body>
+</html>
